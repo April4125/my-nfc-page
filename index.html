@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>武周圣历 · 每日运势</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html { font-size: 16px; }
+  body {
+    width:100%; min-height:100vh;
+    background: linear-gradient(160deg, #fff0f5 0%, #ffe8f0 40%, #f8e0ff 100%);
+    font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif;
+    color: #333;
+    overflow-x: hidden;
+  }
+
+  /* ===== NFC入场动画遮罩 ===== */
+  #nfc-splash {
+    position: fixed; inset:0; z-index: 9999;
+    background: linear-gradient(135deg, #1a0833 0%, #3d0f6b 50%, #1a0833 100%);
+    display: flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  #nfc-splash.hide { opacity:0; transform:scale(1.05); pointer-events:none; }
+  .splash-ripple {
+    width:120px; height:120px; border-radius:50%;
+    background: radial-gradient(circle, rgba(255,160,220,0.9) 0%, rgba(180,80,255,0.5) 50%, transparent 70%);
+    animation: splashPulse 1.2s ease-out forwards;
+    box-shadow: 0 0 60px rgba(255,100,200,0.8), 0 0 120px rgba(180,80,255,0.4);
+  }
+  @keyframes splashPulse {
+    0%   { transform:scale(0); opacity:1; }
+    60%  { transform:scale(1); opacity:1; }
+    100% { transform:scale(3); opacity:0; }
+  }
+  .splash-text {
+    color: #fff; font-size: 18px; margin-top: 24px; letter-spacing: 4px;
+    animation: fadeInUp 0.8s 0.3s ease both;
+  }
+  .splash-sub { color:rgba(255,180,220,0.8); font-size:13px; margin-top:8px; letter-spacing:2px; animation:fadeInUp 0.8s 0.5s ease both; }
+  @keyframes fadeInUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+  /* ===== 顶部状态栏 ===== */
+  .status-bar {
+    background: #fff;
+    padding: 12px 16px 0;
+    position: sticky; top:0; z-index:100;
+    box-shadow: 0 1px 8px rgba(255,120,180,0.12);
+  }
+  .status-top {
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:12px; color:#888; margin-bottom:8px;
+  }
+  .status-icons { display:flex; gap:6px; align-items:center; }
+  .status-tab {
+    display:flex; gap:0; border-bottom: 1px solid #f0e0ec;
+  }
+  .tab-item {
+    flex:1; text-align:center; padding: 8px 0; font-size:13px;
+    color: #bbb; position:relative; cursor:pointer;
+  }
+  .tab-item.active { color: #e85fa0; font-weight:600; }
+  .tab-item.active::after {
+    content:''; position:absolute; bottom:-1px; left:20%; right:20%;
+    height:2px; background: linear-gradient(90deg, #ff70a8, #c060ff);
+    border-radius:2px;
+  }
+
+  /* ===== 日期选择器 ===== */
+  .date-strip {
+    background:#fff;
+    padding: 10px 16px;
+    display:flex; gap:0; overflow-x:auto;
+    scrollbar-width:none;
+    border-bottom: 1px solid #f8eef4;
+  }
+  .date-strip::-webkit-scrollbar { display:none; }
+  .date-cell {
+    min-width:46px; text-align:center; padding:6px 4px;
+    border-radius:10px; cursor:pointer; flex-shrink:0;
+  }
+  .date-cell .weekday { font-size:11px; color:#bbb; margin-bottom:4px; }
+  .date-cell .day-num {
+    width:32px; height:32px; line-height:32px;
+    border-radius:50%; font-size:15px; font-weight:500;
+    color:#555; margin:0 auto;
+  }
+  .date-cell.active .day-num {
+    background: linear-gradient(135deg, #ff6eb0, #c060f0);
+    color:#fff; box-shadow:0 2px 12px rgba(255,80,160,0.35);
+  }
+  .date-cell.active .weekday { color:#e85fa0; }
+
+  /* ===== 主内容 ===== */
+  .main-content { padding:14px 14px 90px; }
+
+  /* ===== 综合评分卡片 ===== */
+  .score-card {
+    background:#fff; border-radius:16px;
+    padding:18px; margin-bottom:14px;
+    box-shadow:0 2px 16px rgba(255,100,160,0.1);
+    position:relative; overflow:hidden;
+  }
+  .score-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background: linear-gradient(90deg, #ff6eb0, #c060f0, #60c0ff);
+  }
+  .score-title {
+    font-size:15px; font-weight:600; color:#333; margin-bottom:14px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .score-title-icon {
+    width:22px; height:22px; border-radius:6px;
+    background: linear-gradient(135deg, #ff6eb0, #c060f0);
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; color:#fff;
+  }
+  .score-body { display:flex; align-items:center; gap:16px; }
+  
+  /* 仪表盘 */
+  .gauge-wrap { flex-shrink:0; text-align:center; }
+  .gauge-svg { width:90px; height:90px; }
+  .gauge-bg { fill:none; stroke:#f5e8f0; stroke-width:9; stroke-linecap:round; }
+  .gauge-fill {
+    fill:none; stroke-width:9; stroke-linecap:round;
+    stroke: url(#gaugeGrad);
+    stroke-dasharray: 220;
+    stroke-dashoffset: 220;
+    transition: stroke-dashoffset 1.2s cubic-bezier(0.17,0.67,0.35,1);
+  }
+  .gauge-center-score {
+    font-size:28px; font-weight:700;
+    background: linear-gradient(135deg, #ff6eb0, #c060f0);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .gauge-label { font-size:11px; color:#bbb; margin-top:2px; }
+
+  /* 柱状图 */
+  .bars-wrap { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
+  .bar-item { display:flex; flex-direction:column; gap:5px; }
+  .bar-item-label { font-size:11px; color:#999; text-align:center; }
+  .bar-track {
+    height:64px; background:#f8f0f5; border-radius:6px;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    overflow:hidden; position:relative;
+  }
+  .bar-fill {
+    border-radius:6px 6px 0 0;
+    width:100%;
+    transition: height 1s cubic-bezier(0.17,0.67,0.35,1);
+  }
+  .bar-fill.love { background: linear-gradient(180deg, #ff6eb0 0%, #ffb8d4 100%); }
+  .bar-fill.money { background: linear-gradient(180deg, #ff9e30 0%, #ffd080 100%); }
+  .bar-fill.career { background: linear-gradient(180deg, #60b8ff 0%, #a0d8ff 100%); }
+  .bar-fill.health { background: linear-gradient(180deg, #50d890 0%, #a0f0c0 100%); }
+  .bar-score { font-size:11px; color:#888; text-align:center; }
+
+  /* ===== 各类运势卡片 ===== */
+  .fortune-card {
+    background:#fff; border-radius:16px;
+    padding:16px; margin-bottom:12px;
+    box-shadow:0 2px 12px rgba(255,100,160,0.08);
+  }
+  .fortune-card-header {
+    display:flex; align-items:center; gap:8px; margin-bottom:12px;
+  }
+  .fortune-dot {
+    width:8px; height:8px; border-radius:50%;
+    background: linear-gradient(135deg, #ff6eb0, #c060f0);
+    flex-shrink:0;
+  }
+  .fortune-card-title { font-size:14px; font-weight:600; color:#333; }
+  .fortune-card-body { font-size:13px; color:#666; line-height:1.9; }
+  .fortune-card-body strong { color:#e85fa0; }
+
+  /* ===== 命理信息栅格 ===== */
+  .bazi-grid {
+    display:grid; grid-template-columns:1fr 1fr;
+    gap:8px; margin-bottom:10px;
+  }
+  .bazi-item {
+    background:#fff9fb; border-radius:10px; padding:10px 12px;
+    border: 1px solid #ffe0ec;
+  }
+  .bazi-item-label { font-size:11px; color:#bbb; margin-bottom:4px; }
+  .bazi-item-val { font-size:13px; color:#444; font-weight:500; }
+
+  /* ===== 五行分析 ===== */
+  .wuxing-row {
+    display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;
+  }
+  .wx-chip {
+    padding:4px 12px; border-radius:20px; font-size:12px;
+    font-weight:500; background:#f5e8ff; color:#9050c0;
+  }
+  .wx-chip.strong { background:#ffe0f0; color:#e050a0; }
+  .wx-chip.weak { background:#e8f4ff; color:#4090d0; }
+
+  /* ===== 五行雷达 ===== */
+  .wuxing-bars { margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+  .wx-bar-row { display:flex; align-items:center; gap:10px; }
+  .wx-bar-name { font-size:12px; color:#888; width:24px; flex-shrink:0; }
+  .wx-bar-track {
+    flex:1; height:8px; background:#f5e8f5; border-radius:4px; overflow:hidden;
+  }
+  .wx-bar-fill { height:100%; border-radius:4px; transition: width 1.2s cubic-bezier(0.17,0.67,0.35,1); }
+  .wx-bar-fill.wood { background:linear-gradient(90deg,#50c060,#a0e870); }
+  .wx-bar-fill.fire { background:linear-gradient(90deg,#ff5050,#ff9050); }
+  .wx-bar-fill.earth { background:linear-gradient(90deg,#d0a030,#f0d060); }
+  .wx-bar-fill.metal { background:linear-gradient(90deg,#a0b0c0,#d0e0f0); }
+  .wx-bar-fill.water { background:linear-gradient(90deg,#4090d0,#80c0ff); }
+  .wx-bar-num { font-size:11px; color:#bbb; width:28px; text-align:right; flex-shrink:0; }
+
+  /* ===== 锦鲤签文 ===== */
+  .qian-card {
+    background: linear-gradient(135deg, #3d0a5f 0%, #6a1090 50%, #3d0a5f 100%);
+    border-radius:16px; padding:20px;
+    margin-bottom:12px; text-align:center;
+    box-shadow:0 4px 24px rgba(180,60,255,0.25);
+    position:relative; overflow:hidden;
+  }
+  .qian-card::before {
+    content:''; position:absolute; inset:0;
+    background: radial-gradient(ellipse 80% 60% at 50% 20%, rgba(255,160,220,0.15) 0%, transparent 70%);
+  }
+  .qian-title { font-size:12px; color:rgba(255,200,220,0.7); letter-spacing:3px; margin-bottom:10px; }
+  .qian-num { font-size:36px; color:#ffd080; font-weight:700; margin-bottom:8px; }
+  .qian-poem {
+    font-size:16px; color:#ffe8f5; line-height:1.8;
+    margin-bottom:12px; font-family:'Noto Serif SC','STSong',serif;
+  }
+  .qian-explain { font-size:12px; color:rgba(255,200,220,0.8); line-height:1.7; }
+  .qian-badge {
+    display:inline-block; margin-top:10px;
+    padding:4px 16px; border-radius:20px;
+    background: rgba(255,160,80,0.2); border:1px solid rgba(255,200,80,0.4);
+    color:#ffd080; font-size:12px;
+  }
+
+  /* ===== 武则天祝福语 ===== */
+  .empress-blessing {
+    background: linear-gradient(135deg, #fff5fb 0%, #f8eaff 100%);
+    border-radius:16px; padding:16px;
+    margin-bottom:12px;
+    border: 1px solid rgba(255,120,200,0.2);
+    display:flex; gap:12px; align-items:flex-start;
+  }
+  .empress-avatar {
+    width:48px; height:48px; border-radius:50%; flex-shrink:0;
+    background: linear-gradient(135deg, #8b2fc8, #c060f0);
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px;
+    box-shadow:0 2px 12px rgba(160,60,255,0.3);
+  }
+  .empress-text { flex:1; }
+  .empress-name { font-size:12px; color:#c060f0; margin-bottom:6px; font-weight:600; }
+  .empress-msg { font-size:13px; color:#555; line-height:1.8; font-family:'Noto Serif SC','STSong',serif; }
+
+  /* ===== 今日宜忌 ===== */
+  .yiji-card {
+    background:#fff; border-radius:16px;
+    padding:16px; margin-bottom:12px;
+    box-shadow:0 2px 12px rgba(255,100,160,0.08);
+  }
+  .yiji-row { display:flex; gap:10px; }
+  .yiji-block { flex:1; }
+  .yiji-block-title {
+    font-size:12px; font-weight:600; margin-bottom:8px;
+    display:flex; align-items:center; gap:4px;
+  }
+  .yi-icon { color:#50c870; }
+  .ji-icon { color:#ff6060; }
+  .yiji-item {
+    display:flex; align-items:center; gap:6px;
+    padding:6px 0; border-bottom:1px solid #faf0f5; font-size:12px; color:#555;
+  }
+  .yiji-item:last-child { border:none; }
+  .yiji-item::before { content:''; width:4px; height:4px; border-radius:50%; flex-shrink:0; }
+  .yiji-block.yi .yiji-item::before { background:#50c870; }
+  .yiji-block.ji .yiji-item::before { background:#ff6060; }
+
+  /* ===== 底部导航 ===== */
+  .bottom-nav {
+    position:fixed; bottom:0; left:0; right:0;
+    background:#fff; padding:10px 0 20px;
+    box-shadow:0 -1px 8px rgba(255,100,160,0.12);
+    display:flex; justify-content:space-around;
+    z-index:100;
+  }
+  .nav-item { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; }
+  .nav-icon { font-size:20px; }
+  .nav-label { font-size:10px; color:#bbb; }
+  .nav-item.active .nav-label { color:#e85fa0; }
+  .nav-item.active .nav-icon { filter: drop-shadow(0 0 4px rgba(232,95,160,0.5)); }
+
+  /* ===== NFC徽章 ===== */
+  .nfc-badge {
+    display:flex; align-items:center; gap:6px;
+    padding:8px 16px; background:linear-gradient(135deg,#fff0f8,#f0e8ff);
+    border-radius:20px; margin-bottom:14px;
+    border:1px solid rgba(255,100,200,0.2);
+    font-size:12px; color:#e85fa0;
+  }
+  .nfc-badge-icon { font-size:16px; animation:nfcPulse 2s infinite; }
+  @keyframes nfcPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* ===== 顶部品牌标题区 ===== */
+  .brand-header {
+    background: linear-gradient(135deg, #3a0860 0%, #6010a0 100%);
+    padding:16px 16px 18px; text-align:center;
+    position:relative; overflow:hidden;
+  }
+  .brand-header::after {
+    content:''; position:absolute; bottom:0; left:0; right:0; height:20px;
+    background: linear-gradient(160deg, #fff0f5 0%, #ffe8f0 100%);
+    clip-path: ellipse(55% 100% at 50% 100%);
+  }
+  .brand-tag { font-size:11px; color:rgba(255,200,220,0.7); letter-spacing:3px; margin-bottom:6px; }
+  .brand-title { font-size:22px; font-weight:700; color:#fff; letter-spacing:2px; }
+  .brand-subtitle { font-size:12px; color:rgba(255,200,220,0.8); margin-top:6px; }
+  .brand-decoration {
+    position:absolute; top:10px; right:16px;
+    font-size:28px; opacity:0.3;
+  }
+
+  /* ===== 工具：淡入动画 ===== */
+  .fade-in { animation: fadeInUp 0.6s ease both; }
+  .fade-in-d1 { animation-delay:0.1s; }
+  .fade-in-d2 { animation-delay:0.2s; }
+  .fade-in-d3 { animation-delay:0.3s; }
+  .fade-in-d4 { animation-delay:0.4s; }
+  .fade-in-d5 { animation-delay:0.5s; }
+  .fade-in-d6 { animation-delay:0.6s; }
+</style>
+</head>
+<body>
+
+<!-- NFC入场动画 -->
+<div id="nfc-splash">
+  <div class="splash-ripple"></div>
+  <div class="splash-text">武周圣历</div>
+  <div class="splash-sub">手串已感应 · 专属运势解读启动</div>
+</div>
+
+<!-- 品牌头部 -->
+<div class="brand-header">
+  <div class="brand-decoration">☽</div>
+  <div class="brand-tag">庆山寺 · 武皇加持</div>
+  <div class="brand-title">武周圣历</div>
+  <div class="brand-subtitle">每日运势 · 千年祈福智慧</div>
+</div>
+
+<!-- 顶部标签栏 -->
+<div class="status-bar">
+  <div class="status-top">
+    <span id="cur-time">10:22</span>
+    <div class="status-icons">
+      <span>📶</span><span>🔋</span>
+    </div>
+  </div>
+  <div class="status-tab">
+    <div class="tab-item active">每日运势</div>
+    <div class="tab-item">月运总览</div>
+    <div class="tab-item">求签祈福</div>
+  </div>
+</div>
+
+<!-- 日期选择器 -->
+<div class="date-strip" id="dateStrip"></div>
+
+<!-- 主内容 -->
+<div class="main-content">
+
+  <!-- NFC感应徽章 -->
+  <div class="nfc-badge fade-in fade-in-d1">
+    <span class="nfc-badge-icon">📡</span>
+    <span id="bracelet-name">武周合香手串</span> · 已感应
+    <span style="margin-left:auto;color:#bbb;font-size:11px">专属解读已激活</span>
+  </div>
+
+  <!-- 综合评分 -->
+  <div class="score-card fade-in fade-in-d2">
+    <div class="score-title">
+      <div class="score-title-icon">✦</div>
+      每日运势
+    </div>
+    <div class="score-body">
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#ff6eb0"/>
+              <stop offset="100%" style="stop-color:#c060f0"/>
+            </linearGradient>
+          </defs>
+          <!-- 背景圆弧 (从225°到-45°约270°) -->
+          <path class="gauge-bg" d="M 18 72 A 35 35 0 1 1 82 72" stroke-dasharray="220" stroke-dashoffset="0"/>
+          <path class="gauge-fill" id="gaugeFill" d="M 18 72 A 35 35 0 1 1 82 72"/>
+          <text x="50" y="54" text-anchor="middle" class="gauge-center-score" fill="#ff6eb0" font-size="22" font-weight="700" id="scoreNum">0</text>
+          <text x="50" y="66" text-anchor="middle" fill="#bbb" font-size="8">综合分数</text>
+        </svg>
+      </div>
+      <div class="bars-wrap">
+        <div class="bar-item">
+          <div class="bar-track"><div class="bar-fill love" id="barLove" style="height:0%"></div></div>
+          <div class="bar-score" id="scoreLove">0</div>
+          <div class="bar-item-label">爱情</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-track"><div class="bar-fill money" id="barMoney" style="height:0%"></div></div>
+          <div class="bar-score" id="scoreMoney">0</div>
+          <div class="bar-item-label">财运</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-track"><div class="bar-fill career" id="barCareer" style="height:0%"></div></div>
+          <div class="bar-score" id="scoreCareer">0</div>
+          <div class="bar-item-label">事业</div>
+        </div>
+        <div class="bar-item">
+          <div class="bar-track"><div class="bar-fill health" id="barHealth" style="height:0%"></div></div>
+          <div class="bar-score" id="scoreHealth">0</div>
+          <div class="bar-item-label">健康</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 今日锦鲤签 -->
+  <div class="qian-card fade-in fade-in-d3">
+    <div class="qian-title">✦ 今日武皇御签 ✦</div>
+    <div class="qian-num" id="qianNum">第 · 签</div>
+    <div class="qian-poem" id="qianPoem">运势加载中…</div>
+    <div class="qian-explain" id="qianExplain"></div>
+    <div class="qian-badge" id="qianBadge">吉签</div>
+  </div>
+
+  <!-- 武皇开示 -->
+  <div class="empress-blessing fade-in fade-in-d4">
+    <div class="empress-avatar">👑</div>
+    <div class="empress-text">
+      <div class="empress-name">武则天 · 武周圣神皇帝</div>
+      <div class="empress-msg" id="empressBless">吾观汝今日气场，…</div>
+    </div>
+  </div>
+
+  <!-- 八字命理 -->
+  <div class="fortune-card fade-in fade-in-d4">
+    <div class="fortune-card-header">
+      <div class="fortune-dot"></div>
+      <div class="fortune-card-title">八字命理</div>
+    </div>
+    <div class="bazi-grid" id="baziGrid">
+      <!-- 动态填充 -->
+    </div>
+    <div class="fortune-card-body" id="baziText"></div>
+  </div>
+
+  <!-- 五行分析 -->
+  <div class="fortune-card fade-in fade-in-d5">
+    <div class="fortune-card-header">
+      <div class="fortune-dot"></div>
+      <div class="fortune-card-title">五行分析</div>
+    </div>
+    <div class="wuxing-bars" id="wuxingBars"></div>
+    <div class="fortune-card-body" style="margin-top:10px;" id="wuxingText"></div>
+  </div>
+
+  <!-- 今日宜忌 -->
+  <div class="yiji-card fade-in fade-in-d6">
+    <div class="fortune-card-header" style="margin-bottom:10px">
+      <div class="fortune-dot"></div>
+      <div class="fortune-card-title">今日宜忌</div>
+    </div>
+    <div class="yiji-row">
+      <div class="yiji-block yi">
+        <div class="yiji-block-title"><span class="yi-icon">✓</span> 今日宜</div>
+        <div id="yiList"></div>
+      </div>
+      <div class="yiji-block ji">
+        <div class="yiji-block-title"><span class="ji-icon">✕</span> 今日忌</div>
+        <div id="jiList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 运势详细分析 -->
+  <div class="fortune-card fade-in fade-in-d5">
+    <div class="fortune-card-header">
+      <div class="fortune-dot"></div>
+      <div class="fortune-card-title">运势详批</div>
+    </div>
+    <div class="fortune-card-body" id="detailText"></div>
+  </div>
+
+</div><!-- /main-content -->
+
+<!-- 底部导航 -->
+<div class="bottom-nav">
+  <div class="nav-item active">
+    <div class="nav-icon">🔮</div>
+    <div class="nav-label">运势</div>
+  </div>
+  <div class="nav-item">
+    <div class="nav-icon" style="filter:grayscale(0.3)">🪬</div>
+    <div class="nav-label">祈福</div>
+  </div>
+  <div class="nav-item">
+    <div class="nav-icon" style="font-size:28px;margin-top:-8px">
+      <span style="background:linear-gradient(135deg,#ff6eb0,#c060f0);-webkit-background-clip:text;-webkit-text-fill-color:transparent">AI</span>
+    </div>
+    <div class="nav-label" style="margin-top:2px">智慧</div>
+  </div>
+  <div class="nav-item">
+    <div class="nav-icon">📿</div>
+    <div class="nav-label">手串</div>
+  </div>
+  <div class="nav-item">
+    <div class="nav-icon">👤</div>
+    <div class="nav-label">我的</div>
+  </div>
+</div>
+
+<script>
+// ===== 工具函数 =====
+function seededRand(seed, min, max) {
+  // 改良版伪随机，避免固定输出
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  s = (s * 16807) % 2147483647;
+  let r = (s - 1) / 2147483646;
+  return Math.floor(r * (max - min + 1)) + min;
+}
+
+// 根据当前时间生成时段seed（早/中/晚不同）
+function getTimeSeed() {
+  const now = new Date();
+  const dateSeed = now.getFullYear() * 10000 + (now.getMonth()+1) * 100 + now.getDate();
+  const hour = now.getHours();
+  // 早(5-11) / 中(12-17) / 晚(18-次日4) 三个时段各不同
+  let period;
+  if (hour >= 5 && hour <= 11) period = 1;
+  else if (hour >= 12 && hour <= 17) period = 2;
+  else period = 3;
+  return dateSeed * 10 + period; // 日期+时段 = 唯一seed
+}
+
+// 每次NFC触碰都不同的seed（精确到分钟）
+function getTouchSeed() {
+  const now = new Date();
+  return now.getFullYear() * 10000000
+       + (now.getMonth()+1) * 100000
+       + now.getDate() * 1000
+       + now.getHours() * 100
+       + Math.floor(now.getMinutes() / 5); // 每5分钟变一次
+}
+
+// ===== 数据库 =====
+const QIAN_DB = [
+  { num:"第一签", poem:"破茧成蝶自有时，莫因迟暮误花期\n千磨万砺皆成器，一朝腾飞九天知", badge:"上上签",
+    explain:"此签为武皇亲赐破茧之签，喻示蛰伏之后必有腾飞之日，万事顺应天时，忌急于求成。",
+    bless:"卿之才华，朕早已洞见。如飞龙在天，时机一至，扶摇直上，无可阻挡！" },
+  { num:"第三签", poem:"随缘自在无烦恼，守静笃诚福自来\n莲花出水不染尘，贵人相逢皆善缘", badge:"上签",
+    explain:"此签主缘法通达、贵人相助，宜平心静气，守中待时，近日必有意外之喜。",
+    bless:"卿心若莲花，出淤泥而不染。守此本心，朕保汝诸事皆顺，贵人自来。" },
+  { num:"第五签", poem:"云散风清月自明，心诚自有天来应\n千里姻缘红线牵，有缘千里终相聚", badge:"上上签",
+    explain:"情缘签。云散月明，心诚则灵。姻缘事宜主动出击，有缘之人近在咫尺。",
+    bless:"感情之事，机缘最妙。卿今日气场如日中天，大胆说出心中所想，吉！" },
+  { num:"第七签", poem:"财运亨通日日升，金玉满堂喜事临\n水善利万物之下，厚积薄发自成金", badge:"大吉签",
+    explain:"此为武皇财运大签！财源广进，宜开源、拓展，正财偏财皆有进益，逢此签者近期必有进财之象。",
+    bless:"财乃养命之本，卿今有贵气护身，出门见喜，生意往来皆可大胆为之！" },
+  { num:"第九签", poem:"学而不辍终有成，书山有路勤为径\n宝剑锋从磨砺出，梅花香自苦寒来", badge:"上签",
+    explain:"学业功名签。坚持用功，必有所成。近期宜专注学习，避免分心，圣光庇佑。",
+    bless:"学问之道，贵在持恒。汝若以此诚心求学，朕御赐文曲星加持，金榜题名可期！" },
+  { num:"第十二签", poem:"万事顺遂如意来，春风得意马蹄疾\n福星高照百事成，吉祥如意乐无忧", badge:"上上签",
+    explain:"百事吉祥签。今日诸事顺遂，宜出行、见人、谈事，得此签者万事大吉！",
+    bless:"朕今日感应到卿之诚心，特赐百事顺遂之兆！放心大胆去做，吉无不利！" },
+];
+
+const WU_BLESS = [
+  "卿之气运今日旺盛，如朕当年力排众议、御笔亲书，凡事皆可大胆为之，勿存疑虑。",
+  "朕历经风雨而不倒，全赖心志坚定。卿今日亦有此象，遇困不退，必获大成。",
+  "今日贵人运旺，如当年朕得狄仁杰辅佐，左右逢源。卿可主动出击，缘分自来。",
+  "财运如潮水，今日正当涨时。朕昔年开盛世、兴百业，卿今有此气象，宜积极进取。",
+];
+
+const YIJI_DATA = [
+  { yi:["出行见贵人","签订契约","拜访长辈","学习充电"], ji:["争论口角","大额消费","深夜行事","优柔寡断"] },
+  { yi:["求职面试","财务规划","佩戴手串","拜佛祈愿"], ji:["酗酒消极","负面思虑","拖延懈怠","破财挥霍"] },
+  { yi:["表达心意","结交新友","开展副业","冥想静心"], ji:["孤僻退缩","强行攀附","杂念丛生","忽视健康"] },
+];
+
+const WUXING_NAMES = ["木","火","土","金","水"];
+const WUXING_CLASSES = ["wood","fire","earth","metal","water"];
+const WUXING_TEXTS = [
+  "木旺生火，今日思维活跃，创造力强，宜启动新项目。",
+  "火旺克金，热情充沛，行动力爆棚，宜冲锋在前，但勿过于急躁。",
+  "土旺生金，今日根基稳固，宜务实落地，财运有稳步增长之象。",
+  "金旺生水，今日逻辑清晰，交际顺畅，宜谈判协商，签约吉利。",
+  "水旺生木，智慧与直觉俱佳，宜静中思动，谋定而后发。",
+];
+
+const BAZI_LINES = [
+  {label:"今日天干", val:"庚辰"},
+  {label:"今日地支", val:"壬午"},
+  {label:"日主五行", val:"火"},
+  {label:"当令星神", val:"正官旺"},
+];
+const BAZI_TEXTS = [
+  "八字四柱：庚辰 / 壬午 / 己卯 / 丙辰\n今日天干为火，地支午火临旺，正官当令，逢此格局宜遵规守矩，表现自我，上司赏识可期。",
+  "今日命盘以水木为用神，忌土。宜顺势而为，近期贵人多为年长女性，可主动结缘。",
+  "今日日主火旺，需防冲动决策。财星藏于地支，宜踏实积累，切忌投机冒进。",
+];
+
+const DETAIL_TEXTS = [
+  "<strong>爱情运势：</strong>金星入宫，情感升温，单身者今日容易邂逅心仪之人，建议大胆表达；有伴侣者感情更加稳固，共同出行有惊喜。<br><br><strong>财富运势：</strong>财星当道，正财路顺，偏财亦有小惊喜。今日不宜大额投机，但稳健理财回报喜人。<br><br><strong>事业运势：</strong>上司赏识，同事配合，今日主动承担工作可获额外加分，项目推进顺利，签约合作吉。<br><br><strong>健康运势：</strong>精力充沛，气血和顺。注意不要过度劳累，适当运动舒筋骨，心情愉快是最好的养生。",
+  "<strong>爱情运势：</strong>桃花星现，情缘活跃。若心中有意之人，今日是表白的好时机；已婚者夫妻感情甜蜜，宜共同出游增进情感。<br><br><strong>财富运势：</strong>偏财星旺，意外之财有望，留意身边机遇。正财稳健，薪资谈判可争取。<br><br><strong>事业运势：</strong>贵人相助，机遇来临。今日宜主动出击，拓展人脉，新的合作机会就在眼前。<br><br><strong>健康运势：</strong>整体状态良好，注意饮食规律，少辛辣。可尝试冥想或瑜伽，舒缓压力。",
+];
+
+// ===== 时间显示 =====
+function updateTime() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('cur-time').textContent = hh + ':' + mm;
+}
+updateTime();
+setInterval(updateTime, 30000);
+
+// ===== 日期条 =====
+function buildDateStrip() {
+  const strip = document.getElementById('dateStrip');
+  const weekdays = ['日','一','二','三','四','五','六'];
+  const today = new Date();
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const cell = document.createElement('div');
+    cell.className = 'date-cell' + (i === 0 ? ' active' : '');
+    cell.innerHTML = `<div class="weekday">周${weekdays[d.getDay()]}</div><div class="day-num">${d.getDate()}</div>`;
+    cell.addEventListener('click', () => {
+      document.querySelectorAll('.date-cell').forEach(c => c.classList.remove('active'));
+      cell.classList.add('active');
+    });
+    strip.appendChild(cell);
+  }
+}
+buildDateStrip();
+
+// ===== 根据当前时间生成运势（早/中/晚不同）=====
+function getTodayFortune() {
+  // seed1: 按日期+时段(早中晚) → 保证同一时段内运势稳定
+  const seed1 = getTimeSeed();
+  // seed2: 按精确到5分钟的touchSeed → 每次唤醒/触碰都可能不同
+  const seed2 = getTouchSeed();
+
+  // 签文：按日期固定（一天一个签，符合常识）
+  const qian = QIAN_DB[seed1 % QIAN_DB.length];
+
+  // 各项分数：seed1+seed2混合 → 不同时段/不同触碰都有变化
+  const total  = seededRand(seed1 + seed2, 65, 98);
+  const love   = seededRand(seed1 + seed2 + 1, 55, 99);
+  const money  = seededRand(seed1 + seed2 + 2, 55, 98);
+  const career = seededRand(seed1 + seed2 + 3, 58, 99);
+  const health = seededRand(seed1 + seed2 + 4, 60, 97);
+
+  const bless = WU_BLESS[seed1 % WU_BLESS.length];
+  const yiji  = YIJI_DATA[seed1 % YIJI_DATA.length];
+
+  const wxVals = [
+    seededRand(seed1 + 10, 25, 75),
+    seededRand(seed1 + 11, 18, 70),
+    seededRand(seed1 + 12, 22, 78),
+    seededRand(seed1 + 13, 12, 65),
+    seededRand(seed1 + 14, 20, 72),
+  ];
+  const wxMax   = Math.max(...wxVals);
+  const maxIdx  = wxVals.indexOf(wxMax);
+  const bazi    = BAZI_LINES;
+  const baziText = BAZI_TEXTS[seed1 % BAZI_TEXTS.length];
+  const detailText = DETAIL_TEXTS[seed1 % DETAIL_TEXTS.length];
+
+  return { qian, total, love, money, career, health, bless, yiji, wxVals, wxMax, maxIdx, bazi, baziText, detailText };
+}
+
+// ===== 填充UI =====
+function fillFortune(f) {
+  // 仪表盘
+  const TOTAL_DASH = 220; // 弧长
+  const offset = TOTAL_DASH - (f.total / 100) * TOTAL_DASH;
+  setTimeout(() => {
+    document.getElementById('gaugeFill').style.strokeDashoffset = offset;
+    // 数字滚动
+    let n = 0;
+    const timer = setInterval(() => {
+      n += 3;
+      if (n >= f.total) { n = f.total; clearInterval(timer); }
+      document.getElementById('scoreNum').textContent = n;
+    }, 20);
+  }, 800);
+
+  // 柱状图
+  setTimeout(() => {
+    const pairs = [['barLove','scoreLove',f.love],['barMoney','scoreMoney',f.money],
+                   ['barCareer','scoreCareer',f.career],['barHealth','scoreHealth',f.health]];
+    pairs.forEach(([bid,sid,val]) => {
+      document.getElementById(bid).style.height = val + '%';
+      document.getElementById(sid).textContent = val;
+    });
+  }, 900);
+
+  // 签文
+  document.getElementById('qianNum').textContent = f.qian.num;
+  document.getElementById('qianPoem').innerHTML = f.qian.poem.replace('\n','<br>');
+  document.getElementById('qianExplain').textContent = f.qian.explain;
+  document.getElementById('qianBadge').textContent = f.qian.badge;
+
+  // 武皇开示
+  document.getElementById('empressBless').textContent = f.bless;
+
+  // 八字
+  const baziGrid = document.getElementById('baziGrid');
+  baziGrid.innerHTML = f.bazi.map(b => `<div class="bazi-item"><div class="bazi-item-label">${b.label}</div><div class="bazi-item-val">${b.val}</div></div>`).join('');
+  document.getElementById('baziText').innerHTML = f.baziText.replace(/\n/g,'<br>');
+
+  // 五行
+  const wbars = document.getElementById('wuxingBars');
+  wbars.innerHTML = f.wxVals.map((v,i) => `
+    <div class="wx-bar-row">
+      <div class="wx-bar-name">${WUXING_NAMES[i]}</div>
+      <div class="wx-bar-track"><div class="wx-bar-fill ${WUXING_CLASSES[i]}" style="width:0%" data-w="${v}"></div></div>
+      <div class="wx-bar-num">${v}</div>
+    </div>`).join('');
+  setTimeout(() => {
+    document.querySelectorAll('.wx-bar-fill').forEach(el => {
+      el.style.width = el.dataset.w + '%';
+    });
+  }, 1000);
+  document.getElementById('wuxingText').textContent = WUXING_TEXTS[f.maxIdx];
+
+  // 宜忌
+  const yiList = document.getElementById('yiList');
+  const jiList = document.getElementById('jiList');
+  yiList.innerHTML = f.yiji.yi.map(s=>`<div class="yiji-item">${s}</div>`).join('');
+  jiList.innerHTML = f.yiji.ji.map(s=>`<div class="yiji-item">${s}</div>`).join('');
+
+  // 详细运势
+  document.getElementById('detailText').innerHTML = f.detailText;
+
+  // 手串名
+  const params = new URLSearchParams(location.search);
+  const braceletName = params.get('n') || '武周合香手串';
+  document.getElementById('bracelet-name').textContent = braceletName;
+}
+
+// ===== NFC入场动画 =====
+function startApp() {
+  const splash = document.getElementById('nfc-splash');
+  setTimeout(() => {
+    splash.classList.add('hide');
+    setTimeout(() => { splash.style.display='none'; }, 900);
+    const f = getTodayFortune();
+    fillFortune(f);
+  }, 1800);
+}
+
+startApp();
+</script>
+</body>
+</html>
