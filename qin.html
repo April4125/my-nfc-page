@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>俑·醒｜秦俑灵眼</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none; /* 避免长按菜单 */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: black;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: "PingFang SC", "Microsoft YaHei", "华文楷书", "KaiTi", "隶书", "Segoe UI Emoji", sans-serif;
+        }
+
+        /* 全屏容器，黑色背景 */
+        .screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            z-index: 9999;
+        }
+
+        /* 画布区域，居中显示眼睛 */
+        .eye-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex: 1;
+        }
+
+        canvas {
+            display: block;
+            width: 80%;
+            max-width: 320px;
+            height: auto;
+            background: black;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        /* 台词区域 */
+        .quote-box {
+            text-align: center;
+            margin: 20px 16px 30px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .quote-text {
+            color: #f0e6c5;
+            font-size: 1.5rem;
+            font-weight: 500;
+            letter-spacing: 2px;
+            text-shadow: 0 0 8px #b87c2e;
+            background: rgba(0,0,0,0.6);
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 60px;
+            backdrop-filter: blur(4px);
+            border-left: 3px solid #d4af37;
+            border-right: 3px solid #d4af37;
+            font-family: "KaiTi", "华文楷书", cursive;
+        }
+
+        .small-note {
+            position: fixed;
+            bottom: 15px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 12px;
+            color: #5a4a2a;
+            background: rgba(0,0,0,0.5);
+            padding: 6px;
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            font-family: monospace;
+        }
+
+        /* 将军令牌弹窗（轻提示） */
+        .toast-msg {
+            position: fixed;
+            bottom: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            color: #ffd966;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-size: 14px;
+            white-space: nowrap;
+            z-index: 10001;
+            border: 1px solid #d4af37;
+            font-family: monospace;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        /* 隐藏类 */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<div class="screen" id="appScreen">
+    <div class="eye-container">
+        <canvas id="eyeCanvas" width="400" height="400" style="width:80%; max-width:320px; height:auto; background:black;"></canvas>
+    </div>
+    <div class="quote-box" id="quoteBox">
+        <div class="quote-text" id="quoteText"></div>
+    </div>
+    <div class="small-note" id="counterNote">⚔️ 再碰一次，唤醒另一只灵眼 ⚔️</div>
+</div>
+<div id="toastMsg" class="toast-msg"></div>
+
+<script>
+    (function(){
+        // ---------- 俏皮台词库（12句） ----------
+        const QUOTES = [
+            "摸朕的兵，要上税！",
+            "汝之手指，有王霸之气。",
+            "再盘三圈，教你兵法。",
+            "将军说，赏你一顿军粮。",
+            "吾在此站了两千年，就等你这一碰。",
+            "升官发财，别忘分我一杯羹。",
+            "汝串上的药香，比秦宫的香料还好闻。",
+            "别声张，旁边那个俑在偷看。",
+            "今夜地宫开会，你来当书记官。",
+            "汝之运气，可当百夫长！",
+            "朕困了，明日再战。",
+            "（神秘地）你知道铜车马的伞盖能拆下来吗？不告诉你。"
+        ];
+
+        // ---------- 存储键名 ----------
+        const STORAGE_KEY = "qin_eye_awaken";   // 存储 { totalCount, unlockedIndices }
+        const TOKEN_UNLOCK_KEY = "qin_general_token"; // 是否已生成过令牌
+
+        // 读取存储
+        let storage = { totalCount: 0, unlockedIndices: [] };
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if(raw) {
+                const parsed = JSON.parse(raw);
+                storage.totalCount = parsed.totalCount || 0;
+                storage.unlockedIndices = parsed.unlockedIndices || [];
+            }
+        } catch(e) { console.warn(e); }
+
+        // 当前会话标志，防止重复播放动画（碰触后只播放一次）
+        let animationPlaying = false;
+        let canvas = document.getElementById('eyeCanvas');
+        let ctx = canvas.getContext('2d');
+        let quoteBox = document.getElementById('quoteBox');
+        let quoteText = document.getElementById('quoteText');
+        let counterNote = document.getElementById('counterNote');
+
+        // 设置画布尺寸（保证清晰）
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth * 0.7, 320);
+            canvas.style.width = size + 'px';
+            canvas.style.height = size + 'px';
+            canvas.width = 400;
+            canvas.height = 400;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 绘制眼睛 (闭眼/睁眼/眨眼)
+        // state: 'closed', 'open', 'blink' (blink快速闭+开)
+        // 参数 progress 0-1 用于睁眼动画: 0完全闭，1完全睁
+        function drawEye(openRatio = 0, pupilGlow = false) {
+            ctx.clearRect(0, 0, 400, 400);
+            ctx.save();
+            // 背景黑色
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, 400, 400);
+
+            // 眼白区域 (古代陶黄色)
+            const eyeW = 240;
+            const eyeH = 110;
+            const centerX = 200;
+            const centerY = 200;
+
+            // 根据睁眼比例计算上下眼皮间距 (睁开时高度从0到eyeH)
+            let currentEyeH = eyeH * openRatio;
+            let topY = centerY - currentEyeH/2;
+            let bottomY = centerY + currentEyeH/2;
+            if(currentEyeH <= 2) currentEyeH = 2;
+            
+            // 眼白渐变
+            const grad = ctx.createLinearGradient(centerX-60, topY, centerX+60, bottomY);
+            grad.addColorStop(0, '#c9ae74');
+            grad.addColorStop(1, '#a5834b');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, eyeW/2, currentEyeH/2, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            if(openRatio > 0.1) {
+                // 瞳孔（琥珀色+竖线龙瞳）
+                const pupilW = 60;
+                const pupilH = 70 * openRatio;
+                ctx.fillStyle = '#4a2c14';
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY, pupilW/2, pupilH/2, 0, 0, Math.PI*2);
+                ctx.fill();
+                
+                // 金色竖瞳
+                ctx.fillStyle = '#d4af37';
+                ctx.shadowBlur = 0;
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY, 14, 28 * openRatio, 0, 0, Math.PI*2);
+                ctx.fill();
+                
+                if(pupilGlow) {
+                    ctx.fillStyle = '#ffdf80';
+                    ctx.beginPath();
+                    ctx.ellipse(centerX-3, centerY-3, 4, 8, 0, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+            ctx.restore();
+        }
+
+        // 播放完整动画：睁眼 -> 停留 -> 眨眼 + 显示文字 -> 闭眼
+        async function playAnimation() {
+            if(animationPlaying) return;
+            animationPlaying = true;
+            
+            // 隐藏之前的台词容器
+            quoteBox.style.opacity = '0';
+            
+            // 1. 从完全闭合开始
+            drawEye(0, false);
+            await delay(50);
+            
+            // 2. 睁眼动画 0 -> 1  (0.5秒)
+            const openDuration = 500;
+            const openStart = performance.now();
+            await animateRatio(openStart, openDuration, 0, 1, (ratio) => {
+                drawEye(ratio, false);
+            });
+            drawEye(1, true);  // 完全睁开并高亮瞳孔
+            
+            // 3. 凝视 0.7秒
+            await delay(700);
+            
+            // 4. 快速眨眼 (闭再开)
+            drawEye(0, false);
+            await delay(80);
+            drawEye(1, true);
+            await delay(120);
+            
+            // 5. 随机抽取台词（并且记录解锁）
+            const availableIndices = QUOTES.map((_,idx)=>idx);
+            let remaining = availableIndices.filter(i => !storage.unlockedIndices.includes(i));
+            let selectedIdx;
+            if(remaining.length === 0) {
+                // 全部已解锁时随机从全部选
+                selectedIdx = Math.floor(Math.random() * QUOTES.length);
+            } else {
+                selectedIdx = remaining[Math.floor(Math.random() * remaining.length)];
+            }
+            const selectedQuote = QUOTES[selectedIdx];
+            
+            // 记录新台词（仅当尚未收集）
+            if(!storage.unlockedIndices.includes(selectedIdx)) {
+                storage.unlockedIndices.push(selectedIdx);
+            }
+            storage.totalCount += 1;
+            // 保存到本地存储
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    totalCount: storage.totalCount,
+                    unlockedIndices: storage.unlockedIndices
+                }));
+            } catch(e) {}
+            
+            // 显示台词
+            quoteText.innerText = selectedQuote;
+            quoteBox.style.opacity = '1';
+            
+            // 更新底部计数器文案 (显示已唤醒种类)
+            const unlockedCount = storage.unlockedIndices.length;
+            if(unlockedCount < QUOTES.length) {
+                counterNote.innerHTML = `✨ 已唤醒 ${unlockedCount}/${QUOTES.length} 种灵眼 · 再碰一次 ✨`;
+            } else {
+                counterNote.innerHTML = `🏆 万俑归一 · 将军令牌已解锁 🏆`;
+                // 若未生成过令牌，自动生成并展示
+                const hasToken = localStorage.getItem(TOKEN_UNLOCK_KEY);
+                if(!hasToken) {
+                    localStorage.setItem(TOKEN_UNLOCK_KEY, 'true');
+                    // 展示将军令牌弹窗
+                    showToastAndImage();
+                }
+            }
+            
+            // 等待台词停留
+            await delay(1800);
+            
+            // 闭眼动画 0.5秒
+            const closeDuration = 500;
+            const closeStart = performance.now();
+            await animateRatio(closeStart, closeDuration, 1, 0, (ratio) => {
+                drawEye(ratio, false);
+            });
+            drawEye(0, false);
+            
+            // 最后延迟300ms后自动关闭页面（模拟自动消失）
+            await delay(300);
+            animationPlaying = false;
+            // 自动关闭本页面，回到之前页面（或关闭webview）
+            window.close?.();  // 对某些浏览器无效，但延迟后用户可手动。更好的：显示“轻触关闭”
+            // 备选: 显示关闭提示
+            const closeHint = document.createElement('div');
+            closeHint.innerText = '轻触屏幕关闭';
+            closeHint.style.position = 'fixed';
+            closeHint.style.bottom = '30px';
+            closeHint.style.left = '0';
+            closeHint.style.right = '0';
+            closeHint.style.textAlign = 'center';
+            closeHint.style.color = '#bbb';
+            closeHint.style.fontSize = '12px';
+            closeHint.style.background = 'none';
+            closeHint.style.pointerEvents = 'none';
+            document.body.appendChild(closeHint);
+            setTimeout(()=>{
+                closeHint.style.opacity = '0';
+            }, 2000);
+        }
+        
+        // 辅助函数：基于requestAnimationFrame的比例动画
+        function animateRatio(startTime, duration, from, to, callback) {
+            return new Promise((resolve) => {
+                function step(now) {
+                    const elapsed = now - startTime;
+                    let t = Math.min(1, elapsed / duration);
+                    const ratio = from + (to - from) * t;
+                    callback(ratio);
+                    if(t < 1) {
+                        requestAnimationFrame(step);
+                    } else {
+                        resolve();
+                    }
+                }
+                requestAnimationFrame(step);
+            });
+        }
+        
+        function delay(ms) {
+            return new Promise(r => setTimeout(r, ms));
+        }
+        
+        // 显示将军令牌（使用canvas生成图片并显示保存提示）
+        function showToastAndImage() {
+            const toast = document.getElementById('toastMsg');
+            toast.innerText = '🎖️ 获“将军令牌” | 长按图片保存 🎖️';
+            toast.style.opacity = '1';
+            // 生成令牌图片
+            const canvasToken = document.createElement('canvas');
+            canvasToken.width = 800;
+            canvasToken.height = 600;
+            const tCtx = canvasToken.getContext('2d');
+            tCtx.fillStyle = '#2c2416';
+            tCtx.fillRect(0,0,800,600);
+            tCtx.fillStyle = '#d4af37';
+            tCtx.font = 'bold 40px "KaiTi", "华文楷书"';
+            tCtx.shadowBlur = 0;
+            tCtx.fillText('⚔️ 秦 · 将军令 ⚔️', 260, 120);
+            tCtx.font = '28px "KaiTi"';
+            tCtx.fillStyle = '#f0e6a0';
+            tCtx.fillText(`唤醒次数 ${storage.totalCount} · 集齐十二灵眼`, 230, 250);
+            tCtx.font = '24px monospace';
+            tCtx.fillStyle = '#bc9a6c';
+            tCtx.fillText('「俑·醒」专属护佑', 290, 360);
+            tCtx.fillStyle = '#ffe6b3';
+            tCtx.font = '20px "Segoe UI"';
+            tCtx.fillText('持此令牌，可得将军庇佑，盘串升官财', 210, 480);
+            // 生成图片url
+            const imgUrl = canvasToken.toDataURL('image/png');
+            // 显示图片并提示长按
+            const modal = document.createElement('div');
+            modal.style.position = 'fixed';
+            modal.style.top = '0';
+            modal.style.left = '0';
+            modal.style.width = '100%';
+            modal.style.height = '100%';
+            modal.style.backgroundColor = 'rgba(0,0,0,0.9)';
+            modal.style.zIndex = '20000';
+            modal.style.display = 'flex';
+            modal.style.flexDirection = 'column';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
+            const img = document.createElement('img');
+            img.src = imgUrl;
+            img.style.maxWidth = '90%';
+            img.style.border = '3px solid #d4af37';
+            img.style.borderRadius = '24px';
+            img.style.marginBottom = '20px';
+            const tip = document.createElement('p');
+            tip.innerText = '长按图片保存到相册 · 轻触关闭';
+            tip.style.color = '#ffdfaa';
+            tip.style.marginTop = '16px';
+            tip.style.fontSize = '16px';
+            modal.appendChild(img);
+            modal.appendChild(tip);
+            document.body.appendChild(modal);
+            modal.addEventListener('click', function(e) {
+                if(e.target === modal) modal.remove();
+            });
+            setTimeout(() => {
+                toast.style.opacity = '0';
+            }, 3000);
+        }
+        
+        // 页面加载完成后自动播放动画（因为NFC碰触会打开此页面，直接播放）
+        window.addEventListener('load', () => {
+            // 确保用户看到黑屏并播放
+            setTimeout(() => {
+                playAnimation().catch(e=>console.warn(e));
+            }, 50);
+            // 增加点击屏幕可以关闭页面（可选，方便退出）
+            document.body.addEventListener('click', () => {
+                // 如果是弹窗存在不关闭整体页面
+                if(document.querySelectorAll('[style*="z-index: 20000"]').length === 0) {
+                    window.close?.();
+                    // 尝试返回
+                    history.back();
+                }
+            });
+        });
+        
+        // 防止多次触发（防止扫描nfc多次打开新页面）
+        if(window.performance.navigation && window.performance.navigation.type === 1){
+            // 刷新时也不重复播放
+        }
+    })();
+</script>
+</body>
+</html>
